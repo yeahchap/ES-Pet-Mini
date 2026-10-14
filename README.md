@@ -33,6 +33,25 @@ names such as Trimagotchi.
 |:---:|:---:|:---:|
 | <img src="assets/photos/es-pet-mini-walkies.jpg" alt="ES-Pet Mini showing Walkies, steps and a daily mission" width="230"> | <img src="assets/photos/es-pet-mini-curious.jpg" alt="ES-Pet Mini showing its Curious screen with Wi-Fi and Bluetooth counters" width="230"> | <img src="assets/photos/es-pet-mini-in-hand.jpg" alt="A finished ES-Pet Mini held in one hand" width="230"> |
 
+## Licence and commercial use
+
+**Free for personal, non-commercial builds. Commercial use outside the public
+licences' permissions requires a separate written agreement.**
+
+- **Software:** [PolyForm Noncommercial 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt).
+  Hobby use, modification and sharing are permitted under its terms, as are the
+  educational, charitable and other organisational uses it expressly allows.
+- **Original artwork, photographs and documentation:**
+  [CC BY-NC 4.0](LICENSES/CC-BY-NC-4.0.txt), with credit to **yeahchap / ES-Pet Mini**.
+- **Selling devices or kits using the project's firmware or artwork, or including
+  it in a commercial product:** see [commercial licensing](COMMERCIAL-LICENSING.md)
+  to discuss permission and an agreed fee or royalty before starting, unless the
+  use is already permitted by the applicable public licence or law.
+
+See [LICENSE.md](LICENSE.md) for scope and full terms. Third-party components,
+including the font data, retain their own licences. ES-Pet Mini is **source
+available for non-commercial use**.
+
 ## Third-party notices
 
 The rasterised UI fonts derive from DejaVu Sans. See
@@ -108,3 +127,4 @@ The application image is produced at:
 ```text
 .pio/build/trimagotchi-c6/firmware.bin
 ```
+
