@@ -1,0 +1,15 @@
+# ES-PET RC7 - RC6-compatible 4 MB single-app + micro-patch layout
+#
+# MIGRATION GUARANTEES:
+#   NVS   remains 0x009000..0x00EFFF
+#   PHY   remains 0x00F000..0x00FFFF
+#   APP   remains 0x010000..0x30FFFF
+#   PATCH uses    0x310000..0x311FFF
+#   DIARY remains 0x312000..0x3FFFFF
+#
+# Name,     Type, SubType, Offset,   Size,      Flags
+nvs,        data, nvs,     0x9000,   0x6000,
+phy_init,   data, phy,     0xF000,   0x1000,
+factory,    app,  factory, 0x10000,  0x300000,
+patch,      0x40, 0x00,    0x310000, 0x2000,
+diary,      data, spiffs,  0x312000, 0xEE000,

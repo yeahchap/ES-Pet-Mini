@@ -1,0 +1,1 @@
+The firmware includes rasterised glyph data generated from DejaVu Sans family fonts available on the build workstation. The original font files are not included in this archive. DejaVu fonts are distributed under their own permissive licence; retain appropriate attribution when publishing the generated project.
