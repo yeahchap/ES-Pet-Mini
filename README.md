@@ -3,6 +3,12 @@
 An ESP32-C6 pocket virtual pet with a 1.54-inch e-paper display, motion sensing,
 Wi-Fi exploration and Bluetooth encounters with other ES-Pets.
 
+<p align="center">
+  <img src="assets/photos/es-pet-mini-pair.jpg" alt="Two finished ES-Pet Minis in grey 3D-printed cases, showing their adventure screens" width="760">
+</p>
+
+Two finished Minis, each with its own steps, discoveries, friends and progress.
+
 This repository publishes **V0.8L RC7**, from the source archive dated
 25 September 2026. It includes the original source, artwork, project configuration,
 host tests and release documentation. The firmware source is unchanged from that
@@ -20,6 +26,12 @@ The original release verification describes the earlier RC7 validation; it is
 retained as historical release documentation. This upload contains no compiled
 firmware images or case/STL files. Historical README files retain development
 names such as Trimagotchi.
+
+## Photos
+
+| Walkies and daily mission | Curious screen | In-hand size |
+|:---:|:---:|:---:|
+| <img src="assets/photos/es-pet-mini-walkies.jpg" alt="ES-Pet Mini showing Walkies, steps and a daily mission" width="230"> | <img src="assets/photos/es-pet-mini-curious.jpg" alt="ES-Pet Mini showing its Curious screen with Wi-Fi and Bluetooth counters" width="230"> | <img src="assets/photos/es-pet-mini-in-hand.jpg" alt="A finished ES-Pet Mini held in one hand" width="230"> |
 
 ## Third-party notices
 
