@@ -1287,10 +1287,8 @@ extern "C" void app_main(void) {
         newest_peer_id = peer.pet_id;
         peer_book_changed = true;
         ESP_LOGI(TAG,
-                 ">>> ANOTHER TRIMAGOTCHI: pet=%08lX%08lX rssi=%d "
+                 ">>> ANOTHER TRIMAGOTCHI: rssi=%d "
                  "proto=v%u caps=0x%02X state=0x%02X <<<",
-                 static_cast<unsigned long>(peer.pet_id >> 32),
-                 static_cast<unsigned long>(peer.pet_id & 0xFFFFFFFFu),
                  static_cast<int>(peer.rssi),
                  static_cast<unsigned>(peer.protocol_version),
                  static_cast<unsigned>(peer.capabilities),

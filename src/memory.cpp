@@ -242,9 +242,7 @@ esp_err_t pet_identity_load_or_create(PetIdentity &identity) {
       stored.pet_id != 0) {
     identity = stored;
     nvs_close(h);
-    ESP_LOGI(TAG, "Loaded permanent Pet ID %08lX%08lX",
-             static_cast<unsigned long>(identity.pet_id >> 32),
-             static_cast<unsigned long>(identity.pet_id & 0xFFFFFFFFu));
+    ESP_LOGI(TAG, "Loaded permanent Pet identity");
     return ESP_OK;
   }
 
@@ -256,9 +254,7 @@ esp_err_t pet_identity_load_or_create(PetIdentity &identity) {
   if (err == ESP_OK) err = nvs_commit(h);
   nvs_close(h);
   if (err == ESP_OK) {
-    ESP_LOGI(TAG, "BORN SOCIAL: created permanent Pet ID %08lX%08lX",
-             static_cast<unsigned long>(id >> 32),
-             static_cast<unsigned long>(id & 0xFFFFFFFFu));
+    ESP_LOGI(TAG, "BORN SOCIAL: created permanent Pet identity");
   }
   return err;
 }

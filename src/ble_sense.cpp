@@ -101,10 +101,8 @@ esp_err_t BleSense::start_stack_() {
     return ESP_ERR_TIMEOUT;
   }
 
-  ESP_LOGI(TAG, "BLE SOCIAL ready: protocol=v%u pet=%08lX%08lX",
-           static_cast<unsigned>(TRIM_PROTOCOL_VERSION),
-           static_cast<unsigned long>(pet_id_ >> 32),
-           static_cast<unsigned long>(pet_id_ & 0xFFFFFFFFu));
+  ESP_LOGI(TAG, "BLE SOCIAL ready: protocol=v%u",
+           static_cast<unsigned>(TRIM_PROTOCOL_VERSION));
   return ESP_OK;
 }
 

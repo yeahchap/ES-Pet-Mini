@@ -11,8 +11,22 @@ Two finished Minis, each with its own steps, discoveries, friends and progress.
 
 This repository publishes **V0.8L RC7**, from the source archive dated
 25 September 2026. It includes the original source, artwork, project configuration,
-host tests and release documentation. The firmware source is unchanged from that
-archive. This publication did not compile or flash firmware.
+host tests and release documentation. A later logging-only source change removes
+permanent Pet IDs from diagnostic output. No firmware was compiled or flashed for
+that change.
+
+## BLE privacy and security
+
+RC7 broadcasts a persistent Pet ID in unauthenticated BLE service data during
+social sensing. Nearby BLE observers can correlate repeated sightings of the same
+device. Peer advertisements can also be imitated, causing false friendship and XP
+events. These limitations apply to the current RC7 social protocol.
+
+The repository source omits full local and peer Pet IDs from diagnostic logs,
+reducing their exposure when logs are shared. This logging cleanup does not
+change the broadcast packets or authenticate peers. Rotating private identifiers,
+address privacy and authenticated peer discovery are not implemented in this
+release. Existing flashed devices retain their installed firmware's behaviour.
 
 ## Start here
 
