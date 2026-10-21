@@ -53,6 +53,11 @@ class ImuSense {
   bool pedometer_ready() const { return pedometer_ready_; }
 
   esp_err_t start();
+  // True only when the LIS2DW12 hardware double-tap interrupt fired.
+  // Classic RC7 does not reference this method.
+#if defined(ES_PET_ULTIMATE_XIAO)
+  bool take_redraw_request();
+#endif
   ImuMotionSnapshot take_snapshot();
 
   // Lloyd Mini V0.7L.2 SNOOZE:
@@ -110,6 +115,9 @@ class ImuSense {
 
   bool present_ = false;
   bool started_ = false;
+#if defined(ES_PET_ULTIMATE_XIAO)
+  bool redraw_request_ = false;
+#endif
   bool pedometer_ready_ = false;
   bool snoozing_ = false;
   bool confirmation_fifo_active_ = false;
