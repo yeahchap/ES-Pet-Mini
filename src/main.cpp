@@ -1878,7 +1878,9 @@ extern "C" void app_main(void) {
   #if defined(ES_PET_ULTIMATE_XIAO)
     // Ultimate: on-demand only. No redraw for radio, ordinary steps or XP.
     // First boot refresh is a one-time visibility aid after USB flashing.
-    const bool refresh = first_epoch_this_boot || imu.take_redraw_request();
+    const bool user_redraw = imu.take_redraw_request();
+    if (user_redraw) haptic_tap("double tap");
+    const bool refresh = first_epoch_this_boot || user_redraw;
 #else
     const bool refresh =
         first_epoch_this_boot ||
