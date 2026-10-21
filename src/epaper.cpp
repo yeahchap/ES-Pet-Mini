@@ -59,8 +59,6 @@ esp_err_t Epaper29Tri::begin() {
            "RC7 DISPLAY PROFILE: B&W "
            "(SSD1681 / GDEH0154D67) [GPIO21=LOW]");
   return mono_.begin();
-}
-
 #endif
 }
 
