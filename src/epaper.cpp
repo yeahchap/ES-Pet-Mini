@@ -13,6 +13,13 @@ constexpr gpio_num_t DISPLAY_SELECT_GPIO = GPIO_NUM_21;
 
 
 esp_err_t Epaper29Tri::begin() {
+#if defined(ES_PET_ULTIMATE_XIAO)
+  // XIAO GPIO21 is the display BUSY input, not the SuperMini profile switch.
+  // Never configure it as a selector: this device only uses the 4-colour panel.
+  four_colour_ = true;
+  ESP_LOGI(TAG, "ULTIMATE XIAO: fixed JD79660 4-colour display");
+  return four_.begin();
+#else
   // GPIO21 is deliberately pulled HIGH:
   //   OPEN/HIGH = current four-colour Mini
   //   LOW/GND   = original monochrome Mini
@@ -52,6 +59,9 @@ esp_err_t Epaper29Tri::begin() {
            "RC7 DISPLAY PROFILE: B&W "
            "(SSD1681 / GDEH0154D67) [GPIO21=LOW]");
   return mono_.begin();
+}
+
+#endif
 }
 
 
