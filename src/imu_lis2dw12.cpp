@@ -5,6 +5,7 @@
 // Calibrate tap thresholds, walking sensitivity and current before personal clone.
 #ifdef ES_PET_ULTIMATE_XIAO
 #include "imu.h"
+#include "esp_check.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
