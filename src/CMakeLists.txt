@@ -15,6 +15,7 @@ idf_component_register(
     "explorer.cpp"
     "onboard_led.cpp"
     "imu.cpp"
+    "imu_lis2dw12.cpp"
     "ble_sense.cpp"
     "timekeeper.cpp"
     "encounter_memory.cpp"
