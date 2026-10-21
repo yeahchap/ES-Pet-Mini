@@ -44,6 +44,9 @@
 #endif
 
 static const char *TAG = "trimagotchi";
+#if defined(ES_PET_ULTIMATE_XIAO)
+static bool g_ultimate_tap_chirped = false;
+#endif
 
 #if defined(ES_PET_ULTIMATE_XIAO)
 // Direct-drive PASSIVE ceramic piezo + 120 ohm series resistor on D1/GPIO1.
@@ -920,6 +923,8 @@ static SnoozeResult snooze_until(ImuSense &imu,
 #if defined(ES_PET_ULTIMATE_XIAO)
     if (poll.wake_event) {
       ESP_LOGI(TAG, "LIS double tap: leave snooze for requested redraw");
+      haptic_tap("double tap");
+      g_ultimate_tap_chirped = true;
       break;
     }
 #endif
@@ -1879,7 +1884,8 @@ extern "C" void app_main(void) {
     // Ultimate: on-demand only. No redraw for radio, ordinary steps or XP.
     // First boot refresh is a one-time visibility aid after USB flashing.
     const bool user_redraw = imu.take_redraw_request();
-    if (user_redraw) haptic_tap("double tap");
+    if (user_redraw && !g_ultimate_tap_chirped) haptic_tap("double tap");
+    g_ultimate_tap_chirped = false;
     const bool refresh = first_epoch_this_boot || user_redraw;
 #else
     const bool refresh =
