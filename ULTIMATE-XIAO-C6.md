@@ -1,7 +1,7 @@
 # 04 — Ultimate Personal ES-PET Mini (XIAO ESP32-C6)
 
 **Status: firmware port committed for BENCH TEST; not yet built, flashed or validated.**
-The production/known-good RC7 remains on \`main\`. Do not replace the working
+The production/known-good RC7 remains on `main`. Do not replace the working
 personal pet until we have a verified backup and restoration procedure.
 
 ## Hardware: proposed pinout for tomorrow's loom
@@ -41,17 +41,17 @@ checked against the particular cell's specification.
 
 ## Build
 
-\`\`\`sh
+```sh
 pio run -e ultimate-xiao-c6
-\`\`\`
+```
 
 Keep the original build intact:
 
-\`\`\`sh
+```sh
 pio run -e trimagotchi-c6
-\`\`\`
+```
 
-- Compile flag: \`ES_PET_ULTIMATE_XIAO\` is required on this target.
+- Compile flag: `ES_PET_ULTIMATE_XIAO` is required on this target.
 - Four-colour profile is fixed: **never use GPIO21 as profile selector**,
   because on XIAO it is the BUSY input.
 - LED handling is board specific (XIAO GPIO15, not SuperMini GPIO8).
@@ -86,7 +86,7 @@ journeys, mission state, lifetime steps and diary. Backup first and restore
 only the data partitions, not the source device's bootloader/app/partition
 table, when a validated migration method is ready.
 
-Current partition layout from \`partitions.csv\`:
+Current partition layout from `partitions.csv`:
 - NVS: 0x009000 length 0x006000.
 - patch: 0x310000 length 0x002000.
 - diary: 0x312000 length 0x0EE000.
