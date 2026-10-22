@@ -847,7 +847,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
     if (imu_err == ESP_OK) {
       imu_snooze = true;
     } else {
-      ESP_LOGW(TAG, "MPU SNOOZE unavailable: %s", esp_err_to_name(imu_err));
+      ESP_LOGW(TAG, "IMU SNOOZE unavailable: %s", esp_err_to_name(imu_err));
     }
   }
 
@@ -856,7 +856,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
   // four-second slices, polls accumulated accel samples, and only calls WALKIES
   // after four cadence-confirmed steps. Radios stay off for the whole period.
 #if defined(ES_PET_ULTIMATE_XIAO)
-  constexpr int64_t MPU_SLICE_US = 60000000LL; // LIS IRQ can wake earlier
+  constexpr int64_t MPU_SLICE_US = 60000000LL; // LSM tap IRQ can wake earlier
 #else
   constexpr int64_t MPU_SLICE_US = 4000000LL;
 #endif
@@ -864,6 +864,15 @@ static SnoozeResult snooze_until(ImuSense &imu,
   uint32_t consecutive_cadence_steps = 0;
 
   while (true) {
+#if defined(ES_PET_ULTIMATE_XIAO)
+    // The sampler may already have consumed the latched IRQ just before we
+    // entered snooze. Honour its queued redraw before waiting for another IRQ.
+    if (imu_snooze && imu.redraw_pending()) {
+      haptic_tap("double tap");
+      g_ultimate_tap_chirped = true;
+      break;
+    }
+#endif
     const int64_t remaining_us = deadline_us - esp_timer_get_time();
     if (remaining_us <= 1000) break;
 
@@ -891,7 +900,11 @@ static SnoozeResult snooze_until(ImuSense &imu,
     ESP_LOGI(TAG,
              "SNOOZE: light sleep %lld ms%s",
              static_cast<long long>(slice_us / 1000),
+#if defined(ES_PET_ULTIMATE_XIAO)
+             imu_snooze ? " (LSM hardware steps + double tap + BOOT)" : " (timer + BOOT)");
+#else
              imu_snooze ? " (MPU FIFO + BOOT watch)" : " (timer + BOOT)");
+#endif
 
     result.used_light_sleep = true;
     const esp_err_t sleep_err = esp_light_sleep_start();
@@ -922,7 +935,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
     const ImuSnoozePoll poll = imu.poll_snooze();
 #if defined(ES_PET_ULTIMATE_XIAO)
     if (poll.wake_event) {
-      ESP_LOGI(TAG, "LIS double tap: leave snooze for requested redraw");
+      ESP_LOGI(TAG, "LSM6DS3 double tap: leave snooze for requested redraw");
       haptic_tap("double tap");
       g_ultimate_tap_chirped = true;
       break;
@@ -930,7 +943,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
 #endif
     if (!poll.ok) {
       ESP_LOGW(TAG,
-               "MPU FIFO poll failed; continuing toward normal SCAN deadline");
+               "IMU snooze poll failed; continuing toward normal SCAN deadline");
       consecutive_cadence_steps = 0;
     } else if (poll.new_steps > 0) {
       consecutive_cadence_steps += poll.new_steps;
@@ -956,7 +969,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
   if (imu_snooze) {
     const esp_err_t imu_err = imu.exit_snooze();
     if (imu_err != ESP_OK) {
-      ESP_LOGW(TAG, "Could not fully restore active MPU mode: %s",
+      ESP_LOGW(TAG, "Could not fully restore active IMU mode: %s",
                esp_err_to_name(imu_err));
     }
   }
@@ -1791,7 +1804,7 @@ extern "C" void app_main(void) {
 
     const bool can_enter_perch =
 #if defined(ES_PET_ULTIMATE_XIAO)
-        false && // No 6-hour MPU-FIFO sleep on a sensor without that feature.
+        false && // Preserve the bench target's existing 15-minute scan policy.
 #endif
         life.journey_active &&
         imu.present() &&
