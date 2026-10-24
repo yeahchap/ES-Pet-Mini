@@ -1,5 +1,7 @@
 #include "timekeeper.h"
 
+#include "clock_sync_policy.h"
+
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -533,31 +535,17 @@ esp_err_t TimeKeeper::run_setup_portal(WifiSense &wifi,
   return err;
 }
 
-bool TimeKeeper::should_sync(bool home_confident) const {
-  if (!configured_ || !home_confident) return false;
-
-  const int64_t now_us = esp_timer_get_time();
-
-  // A bad password, internet outage, or unavailable NTP server must not turn
-  // every one-minute HOME epoch into an expensive connection storm.
-  constexpr int64_t RETRY_BACKOFF_US = 30LL * 60LL * 1000000LL;
-  if (last_attempt_monotonic_us_ >= 0 &&
-      (now_us - last_attempt_monotonic_us_) < RETRY_BACKOFF_US) {
-    return false;
-  }
-
-  if (!valid()) return true;
-  if (last_sync_monotonic_us_ < 0) return true;
-
-  constexpr int64_t SIX_HOURS_US = 6LL * 60LL * 60LL * 1000000LL;
-  return (now_us - last_sync_monotonic_us_) >= SIX_HOURS_US;
+bool TimeKeeper::should_sync(bool home_confident, bool saved_home_visible) const {
+  return clock_sync::due(configured_, home_confident, saved_home_visible,
+                         valid(), esp_timer_get_time(),
+                         last_sync_monotonic_us_, last_attempt_monotonic_us_);
 }
 
 esp_err_t TimeKeeper::sync_at_home(WifiSense &wifi) {
   if (!configured_) return ESP_ERR_INVALID_STATE;
 
   last_attempt_monotonic_us_ = esp_timer_get_time();
-  ESP_LOGI(TAG, "HOME confirmed: briefly connecting for SNTP clock sync");
+  ESP_LOGI(TAG, "HOME clock sync: briefly connecting to saved Wi-Fi for SNTP");
 
   esp_err_t err = wifi.connect_for_internet(
       settings_.ssid, settings_.password, 12000);

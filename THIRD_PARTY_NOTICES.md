@@ -48,3 +48,11 @@ otherwise to promote the sale, use or other dealings in this Font Software
 without prior written authorization from the Gnome Foundation or Bitstream
 Inc., respectively. For further information, contact: fonts at gnome dot
 org.
+
+## STMicroelectronics LSM6DS3 platform driver
+
+`src/vendor/lsm6ds3/lsm6ds3_reg.c` and `.h` are from
+https://github.com/STMicroelectronics/lsm6ds3-pid at commit
+`1b0caf4bf522c7ae33b7f00b23fad531e58d5e90`.
+Copyright (c) 2021 STMicroelectronics. BSD-3-Clause; complete license in
+`src/vendor/lsm6ds3/LICENSE`. These third-party files retain their own license.

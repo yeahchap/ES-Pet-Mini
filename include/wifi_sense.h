@@ -16,12 +16,15 @@ struct WifiScanResult {
   std::vector<WifiObservation> observations;
   int8_t strongest_rssi = -127;
   uint16_t channel_mask = 0;
+  // Ephemeral clock hint. SSID text is not added to the observation book.
+  bool saved_home_visible = false;
 };
 
 class WifiSense {
  public:
   esp_err_t begin();
-  esp_err_t passive_scan(WifiScanResult &result);
+  esp_err_t passive_scan(WifiScanResult &result,
+                         const char *saved_home_ssid = nullptr);
 
   // V0.6.1 normally remains a passive scanner, but can briefly connect to the
   // owner's HOME AP for SNTP. Credentials are supplied by TimeKeeper and are

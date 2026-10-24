@@ -1,3 +1,4 @@
+#if !defined(ES_PET_ULTIMATE_XIAO)
 #include "imu.h"
 
 #include <algorithm>
@@ -759,3 +760,5 @@ esp_err_t ImuSense::read_sample_(ImuSample &s) {
   s.accel_dynamic_mg = std::fabs(mag - 1000.0f);
   return ESP_OK;
 }
+
+#endif // classic MPU-based RC7 only

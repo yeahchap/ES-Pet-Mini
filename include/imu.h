@@ -4,6 +4,10 @@
 #include <cstdint>
 
 #include "esp_err.h"
+#if defined(ES_PET_ULTIMATE_XIAO)
+#include "lsm6ds3_steps.h"
+#include "lsm6ds3_taps.h"
+#endif
 
 struct ImuSample {
   float ax_mg = 0.0f, ay_mg = 0.0f, az_mg = 0.0f;
@@ -15,8 +19,8 @@ struct ImuSample {
 struct ImuMotionSnapshot {
   bool present = false;
 
-  // In the Lloyd Mini this means the software step estimator + snooze
-  // confirmation path is available. There is no MPU-6050 hardware pedometer.
+  // Classic: software step estimator + snooze confirmation. Ultimate XIAO:
+  // verified LSM6DS3 hardware pedometer configuration.
   bool pedometer_ready = false;
 
   bool moving_now = false;
@@ -29,8 +33,7 @@ struct ImuMotionSnapshot {
   uint32_t steps_since_last_take = 0;
   uint32_t steps_since_boot = 0;
 
-  // Kept for compatibility with the main Trimagotchi telemetry. On this
-  // build it is the low 16 bits of the software count, not an MPU register.
+  // Ultimate: actual LSM6DS3 counter. Classic: low 16 bits of software count.
   uint16_t hardware_step_counter = 0;
   uint16_t recent_steps_15s = 0;
 
@@ -53,6 +56,16 @@ class ImuSense {
   bool pedometer_ready() const { return pedometer_ready_; }
 
   esp_err_t start();
+  // True only when the Ultimate's hardware double-tap event fired.
+  // Classic RC7 does not reference this method.
+#if defined(ES_PET_ULTIMATE_XIAO)
+  bool take_redraw_request();
+  bool redraw_pending();
+  void begin_display_refresh();
+  void finish_display_refresh();
+  void begin_feedback();
+  void finish_feedback();
+#endif
   ImuMotionSnapshot take_snapshot();
 
   // Lloyd Mini V0.7L.2 SNOOZE:
@@ -66,7 +79,13 @@ class ImuSense {
   void latch_walkies_from_snooze();
   esp_err_t exit_snooze();
 
-  static constexpr int wake_gpio() { return 14; }
+  static constexpr int wake_gpio() {
+#if defined(ES_PET_ULTIMATE_XIAO)
+    return 2;
+#else
+    return 14;
+#endif
+  }
 
  private:
   static constexpr uint32_t STEP_MIN_INTERVAL_US = 260000;
@@ -110,6 +129,15 @@ class ImuSense {
 
   bool present_ = false;
   bool started_ = false;
+#if defined(ES_PET_ULTIMATE_XIAO)
+  Lsm6ds3Taps lsm_taps_;
+  esp_err_t service_lsm_locked_(uint32_t &new_steps);
+  esp_err_t read_lsm_counter_(uint16_t &raw);
+  Lsm6ds3Steps lsm_steps_;
+  int64_t last_hw_step_us_ = 0;
+  int64_t last_motion_sample_us_ = 0;
+  int64_t last_counter_sample_us_ = 0;
+#endif
   bool pedometer_ready_ = false;
   bool snoozing_ = false;
   bool confirmation_fifo_active_ = false;

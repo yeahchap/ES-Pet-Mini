@@ -4,9 +4,13 @@
 #include <string>
 
 #include "esp_log.h"
+#include "esp_check.h"
 #include "esp_partition.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
+#if defined(ES_PET_ULTIMATE_XIAO)
+#include "driver/ledc.h"
+#endif
 #include "esp_timer.h"
 #include "esp_system.h"
 #include <ctime>
@@ -40,7 +44,58 @@
 #endif
 
 static const char *TAG = "trimagotchi";
+#if defined(ES_PET_ULTIMATE_XIAO)
+static bool g_ultimate_tap_chirped = false;
+static ImuSense *g_ultimate_imu = nullptr;
 
+class TapFeedbackGuard {
+ public:
+  TapFeedbackGuard() : imu_(g_ultimate_imu) {
+    if (imu_) imu_->begin_feedback();
+  }
+  ~TapFeedbackGuard() { if (imu_) imu_->finish_feedback(); }
+ private:
+  ImuSense *imu_;
+};
+#endif
+
+#if defined(ES_PET_ULTIMATE_XIAO)
+// Direct-drive PASSIVE ceramic piezo + 120 ohm series resistor on D1/GPIO1.
+// An active buzzer, 4-ohm speaker or magnetic transducer MUST NOT be used here.
+static constexpr gpio_num_t PIEZO_GPIO = GPIO_NUM_1;
+static bool haptic_ready = false;
+static esp_err_t haptic_init() {
+  ledc_timer_config_t timer{};
+  timer.speed_mode = LEDC_LOW_SPEED_MODE;
+  timer.duty_resolution = LEDC_TIMER_10_BIT;
+  timer.timer_num = LEDC_TIMER_0;
+  timer.freq_hz = 3800;
+  timer.clk_cfg = LEDC_AUTO_CLK;
+  ESP_RETURN_ON_ERROR(ledc_timer_config(&timer), TAG, "piezo timer");
+  ledc_channel_config_t ch{};
+  ch.gpio_num = static_cast<int>(PIEZO_GPIO);
+  ch.speed_mode = LEDC_LOW_SPEED_MODE;
+  ch.channel = LEDC_CHANNEL_0;
+  ch.timer_sel = LEDC_TIMER_0;
+  ch.duty = 0;
+  ESP_RETURN_ON_ERROR(ledc_channel_config(&ch), TAG, "piezo channel");
+  haptic_ready = true;
+  ESP_LOGI(TAG, "Passive piezo on XIAO D1/GPIO1 at 3800 Hz");
+  return ESP_OK;
+}
+static void haptic_tap(const char *reason) {
+  if (!haptic_ready) return;
+  TapFeedbackGuard feedback_guard;
+  ESP_LOGI(TAG, "PIEZO chirp: %s", reason ? reason : "event");
+  if (ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 512) != ESP_OK)
+    return;
+  if (ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0) != ESP_OK)
+    return;
+  vTaskDelay(pdMS_TO_TICKS(100));
+  (void)ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+  (void)ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+#else
 // Final hardware: GPIO1 drives the AO3400A haptic motor gate.
 // A 100 ms pulse keeps the tactile feedback punchy while using one-third
 // less motor-on time than the 150 ms sacrificial-board proof test.
@@ -76,8 +131,16 @@ static void haptic_tap(const char *reason) {
   (void)gpio_set_level(HAPTIC_GPIO, 0);
 }
 
+#endif
+
 static bool refresh_epaper_nonfatal(Epaper29Tri &epd, const char *reason) {
+#if defined(ES_PET_ULTIMATE_XIAO)
+  if (g_ultimate_imu) g_ultimate_imu->begin_display_refresh();
+#endif
   const esp_err_t err = epd.refresh();
+#if defined(ES_PET_ULTIMATE_XIAO)
+  if (g_ultimate_imu) g_ultimate_imu->finish_display_refresh();
+#endif
   if (err == ESP_OK) return true;
 
   ESP_LOGE(TAG,
@@ -366,11 +429,13 @@ static void draw_walkies_state(TinyGfx &g,
 }
 
 static void draw_adventure_state(TinyGfx &g, const LifeState &life,
-                                 const DailyStats &day) {
+                                 const DailyStats &day,
+                                 const TimeKeeper &clock) {
   draw_state_frame(g, "ADVENTURE");
   draw_metric_row(g, UiIcon::Xp, "TRIP XP", life.journey_xp, 46);
   draw_metric_row(g, UiIcon::Wifi, "NEW WIFI", life.journey_new_wifi, 67);
-  draw_metric_row(g, UiIcon::Steps, "STEPS", day.steps, 88);
+  draw_metric_row(g, UiIcon::Steps, "STEPS",
+                  displayed_today_steps(life, day, clock), 88);
 }
 
 static void draw_social_state(TinyGfx &g, const char *title,
@@ -750,7 +815,7 @@ static void draw_status(Epaper29Tri &epd,
                       peer_bonus_xp,
                       UiIcon::Friends, "FRIENDS", peer_book.count);
   } else if (life.journey_active || ex.journey_started) {
-    draw_adventure_state(g, life, day);
+    draw_adventure_state(g, life, day, clock);
   } else if (walkies) {
     draw_walkies_state(g, life, day, clock);
   } else {
@@ -802,7 +867,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
     if (imu_err == ESP_OK) {
       imu_snooze = true;
     } else {
-      ESP_LOGW(TAG, "MPU SNOOZE unavailable: %s", esp_err_to_name(imu_err));
+      ESP_LOGW(TAG, "IMU SNOOZE unavailable: %s", esp_err_to_name(imu_err));
     }
   }
 
@@ -810,11 +875,24 @@ static SnoozeResult snooze_until(ImuSense &imu,
   // interrupt path. Keep its known-good 20 Hz FIFO strategy: the C6 sleeps in
   // four-second slices, polls accumulated accel samples, and only calls WALKIES
   // after four cadence-confirmed steps. Radios stay off for the whole period.
+#if defined(ES_PET_ULTIMATE_XIAO)
+  constexpr int64_t MPU_SLICE_US = 60000000LL; // LSM tap IRQ can wake earlier
+#else
   constexpr int64_t MPU_SLICE_US = 4000000LL;
+#endif
   constexpr uint32_t WALKIES_CONFIRM_STEPS = 4;
   uint32_t consecutive_cadence_steps = 0;
 
   while (true) {
+#if defined(ES_PET_ULTIMATE_XIAO)
+    // The sampler may already have consumed the latched IRQ just before we
+    // entered snooze. Honour its queued redraw before waiting for another IRQ.
+    if (imu_snooze && imu.redraw_pending()) {
+      haptic_tap("double tap");
+      g_ultimate_tap_chirped = true;
+      break;
+    }
+#endif
     const int64_t remaining_us = deadline_us - esp_timer_get_time();
     if (remaining_us <= 1000) break;
 
@@ -831,12 +909,22 @@ static SnoozeResult snooze_until(ImuSense &imu,
     ESP_ERROR_CHECK(
         gpio_wakeup_enable(FactoryResetGesture::kButtonGpio,
                            GPIO_INTR_LOW_LEVEL));
+#if defined(ES_PET_ULTIMATE_XIAO)
+    if (imu_snooze) {
+      // GPIO2/D2 has deep/light-sleep wake capability on XIAO C6.
+      ESP_ERROR_CHECK(gpio_wakeup_enable(GPIO_NUM_2, GPIO_INTR_HIGH_LEVEL));
+    }
+#endif
     ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup());
 
     ESP_LOGI(TAG,
              "SNOOZE: light sleep %lld ms%s",
              static_cast<long long>(slice_us / 1000),
+#if defined(ES_PET_ULTIMATE_XIAO)
+             imu_snooze ? " (LSM hardware steps + double tap + BOOT)" : " (timer + BOOT)");
+#else
              imu_snooze ? " (MPU FIFO + BOOT watch)" : " (timer + BOOT)");
+#endif
 
     result.used_light_sleep = true;
     const esp_err_t sleep_err = esp_light_sleep_start();
@@ -851,6 +939,9 @@ static SnoozeResult snooze_until(ImuSense &imu,
         cause == ESP_SLEEP_WAKEUP_GPIO &&
         gpio_get_level(FactoryResetGesture::kButtonGpio) == 0;
     (void)gpio_wakeup_disable(FactoryResetGesture::kButtonGpio);
+#if defined(ES_PET_ULTIMATE_XIAO)
+    (void)gpio_wakeup_disable(GPIO_NUM_2);
+#endif
 
     if (boot_button_wake) {
       factory_reset.note_wake_press();
@@ -862,9 +953,17 @@ static SnoozeResult snooze_until(ImuSense &imu,
     if (!imu_snooze) break;
 
     const ImuSnoozePoll poll = imu.poll_snooze();
+#if defined(ES_PET_ULTIMATE_XIAO)
+    if (poll.wake_event) {
+      ESP_LOGI(TAG, "LSM6DS3 double tap: leave snooze for requested redraw");
+      haptic_tap("double tap");
+      g_ultimate_tap_chirped = true;
+      break;
+    }
+#endif
     if (!poll.ok) {
       ESP_LOGW(TAG,
-               "MPU FIFO poll failed; continuing toward normal SCAN deadline");
+               "IMU snooze poll failed; continuing toward normal SCAN deadline");
       consecutive_cadence_steps = 0;
     } else if (poll.new_steps > 0) {
       consecutive_cadence_steps += poll.new_steps;
@@ -890,7 +989,7 @@ static SnoozeResult snooze_until(ImuSense &imu,
   if (imu_snooze) {
     const esp_err_t imu_err = imu.exit_snooze();
     if (imu_err != ESP_OK) {
-      ESP_LOGW(TAG, "Could not fully restore active MPU mode: %s",
+      ESP_LOGW(TAG, "Could not fully restore active IMU mode: %s",
                esp_err_to_name(imu_err));
     }
   }
@@ -1049,6 +1148,10 @@ extern "C" void app_main(void) {
   esp_err_t imu_err = imu.begin();
   if (imu_err == ESP_OK) {
     ESP_ERROR_CHECK(imu.start());
+#if defined(ES_PET_ULTIMATE_XIAO)
+    g_ultimate_imu = &imu;
+    ESP_LOGI(TAG, "Ultimate maintenance v0.2: RF antenna, clock recovery, live steps, single-refresh taps");
+#endif
   } else {
     ESP_LOGW(TAG, "IMU unavailable this boot: %s", esp_err_to_name(imu_err));
   }
@@ -1139,7 +1242,11 @@ extern "C" void app_main(void) {
     const int64_t epoch_started_us = esp_timer_get_time();
 
     WifiScanResult scan;
+#if defined(ES_PET_ULTIMATE_XIAO)
+    esp_err_t scan_err = wifi.passive_scan(scan, clock.home_ssid());
+#else
     esp_err_t scan_err = wifi.passive_scan(scan);
+#endif
 
     if (scan_err != ESP_OK) {
       ESP_LOGE(TAG, "Scan error: %s", esp_err_to_name(scan_err));
@@ -1341,7 +1448,16 @@ extern "C" void app_main(void) {
     // HOME is the only place Trimagotchi ever joins a Wi-Fi network. BLE is
     // briefly torn down for the infrequent SNTP transaction, then restored.
     bool clock_just_synced = false;
-    if (clock.should_sync(ex.home_confident)) {
+    if (!clock.valid()) {
+      ESP_LOGI(TAG, "NO CLOCK: setup=%s HOME-fingerprint=%s saved-home-visible=%s",
+               clock.configured() ? "YES" : "NO",
+               ex.home_confident ? "YES" : "NO",
+               scan.saved_home_visible ? "YES" : "NO");
+    }
+    if (clock.should_sync(ex.home_confident, scan.saved_home_visible)) {
+      if (!ex.home_confident && scan.saved_home_visible) {
+        ESP_LOGI(TAG, "Clock recovery: saved HOME Wi-Fi visible; fingerprint not required");
+      }
       esp_err_t bs = ble.sleep();
       if (bs == ESP_OK) {
         esp_err_t ts = clock.sync_at_home(wifi);
@@ -1724,6 +1840,9 @@ extern "C" void app_main(void) {
     constexpr uint8_t PERCHED_AFTER_SCANS = 5;
 
     const bool can_enter_perch =
+#if defined(ES_PET_ULTIMATE_XIAO)
+        false && // Preserve the bench target's existing 15-minute scan policy.
+#endif
         life.journey_active &&
         imu.present() &&
         imu.pedometer_ready() &&
@@ -1811,6 +1930,14 @@ extern "C" void app_main(void) {
         !ready_to_perch &&
         ((life.epochs % 5u) == 0u);
 
+  #if defined(ES_PET_ULTIMATE_XIAO)
+    // Ultimate: on-demand only. No redraw for radio, ordinary steps or XP.
+    // First boot refresh is a one-time visibility aid after USB flashing.
+    const bool user_redraw = imu.take_redraw_request();
+    if (user_redraw && !g_ultimate_tap_chirped) haptic_tap("double tap");
+    g_ultimate_tap_chirped = false;
+    const bool refresh = first_epoch_this_boot || user_redraw;
+#else
     const bool refresh =
         first_epoch_this_boot ||
         learning_home ||
@@ -1824,6 +1951,7 @@ extern "C" void app_main(void) {
          life.journey_active &&
          (new_friends > 0 || new_ble > 0 || new_peers > 0)) ||
         periodic_active_refresh;
+#endif
 
     if (screen_snoozing && !must_wake_from_nap &&
         (new_friends > 0 || new_channels > 0 || new_ble > 0 ||
@@ -1844,7 +1972,21 @@ extern "C" void app_main(void) {
             static_cast<uint32_t>(scan.observations.size()));
         screen_snoozing = false;
         screen_perched = false;
-      } else if (ex.journey_ended || new_peers > 0) {
+      }
+#if defined(ES_PET_ULTIMATE_XIAO)
+      else {
+        // Always show current status when requested; do not render
+        // a permanent SNOOZING/PERCHED screen on an on-demand display.
+        draw_status(epd, life, book, ble_book, peer_book,
+                    scan, ble_scan, reward,
+                    new_ble, new_peers, peer_bonus_xp,
+                    total_epoch_xp, newest_peer_id, ex, motion,
+                    encounters.daily(), clock, missions, badges);
+        screen_snoozing = false;
+        screen_perched = false;
+      }
+#else
+      else if (ex.journey_ended || new_peers > 0) {
         // Homecoming and meeting another Trimagotchi outrank game popups.
         draw_status(epd, life, book, ble_book, peer_book,
                     scan, ble_scan, reward,
@@ -1910,6 +2052,7 @@ extern "C" void app_main(void) {
         screen_perched = false;
       }
 
+#endif
       if (!refresh_epaper_nonfatal(epd, "epoch screen")) {
         // Do not remember a screen state that was never actually painted.
         // The next epoch will therefore attempt a fresh redraw.
@@ -1928,7 +2071,13 @@ extern "C" void app_main(void) {
     const int64_t elapsed_ms =
         (esp_timer_get_time() - epoch_started_us) / 1000;
 
+#if defined(ES_PET_ULTIMATE_XIAO)
+    // Bench starting point: radio scans ~every 15 minutes, not every minute.
+    // Fine tune only after current and feature-coverage measurements.
+    int64_t sleep_ms = (15LL * 60LL * 1000LL) - elapsed_ms;
+#else
     int64_t sleep_ms = 60000 - elapsed_ms;
+#endif
     if (sleep_ms < 1000) sleep_ms = 1000;
 
     if (screen_perched) {

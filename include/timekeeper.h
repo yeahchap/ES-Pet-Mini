@@ -18,6 +18,7 @@ class TimeKeeper {
   const char *setup_ap_name() const { return setup_ap_name_; }
   const char *pet_name() const { return settings_.pet_name; }
   const char *timezone_label() const { return settings_.timezone_label; }
+  const char *home_ssid() const { return configured_ ? settings_.ssid : ""; }
 
   // Blocks for up to timeout_ms waiting for a local browser form. Credentials
   // never leave the Trimagotchi/local Wi-Fi link and are stored in NVS.
@@ -25,7 +26,7 @@ class TimeKeeper {
                              uint32_t timeout_ms,
                              bool &saved);
 
-  bool should_sync(bool home_confident) const;
+  bool should_sync(bool home_confident, bool saved_home_visible = false) const;
   esp_err_t sync_at_home(WifiSense &wifi);
 
   // Used only by the local provisioning HTTP handler.

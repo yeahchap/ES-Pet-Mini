@@ -13,6 +13,14 @@ static constexpr gpio_num_t RGB_GPIO = GPIO_NUM_8;
 static constexpr uint32_t RMT_RESOLUTION_HZ = 10000000;  // 10 MHz = 0.1 us/tick
 
 esp_err_t onboard_rgb_off() {
+#if defined(ES_PET_ULTIMATE_XIAO)
+  // XIAO does NOT have the SuperMini RGB LED on GPIO8.
+  // Its user LED is on GPIO15; avoid configuring nonexistent RGB hardware.
+  ESP_ERROR_CHECK(gpio_reset_pin(GPIO_NUM_15));
+  ESP_ERROR_CHECK(gpio_set_direction(GPIO_NUM_15, GPIO_MODE_OUTPUT));
+  ESP_ERROR_CHECK(gpio_set_level(GPIO_NUM_15, 1)); // active-low user LED
+  return ESP_OK;
+#else
   ESP_LOGI(TAG, "Extinguishing onboard RGB LED on GPIO8");
 
   rmt_channel_handle_t channel = nullptr;
@@ -85,4 +93,5 @@ esp_err_t onboard_rgb_off() {
   }
 
   return err;
+#endif
 }
