@@ -6,6 +6,7 @@
 #include "esp_err.h"
 #if defined(ES_PET_ULTIMATE_XIAO)
 #include "lsm6ds3_steps.h"
+#include "lsm6ds3_taps.h"
 #endif
 
 struct ImuSample {
@@ -60,6 +61,10 @@ class ImuSense {
 #if defined(ES_PET_ULTIMATE_XIAO)
   bool take_redraw_request();
   bool redraw_pending();
+  void begin_display_refresh();
+  void finish_display_refresh();
+  void begin_feedback();
+  void finish_feedback();
 #endif
   ImuMotionSnapshot take_snapshot();
 
@@ -125,7 +130,7 @@ class ImuSense {
   bool present_ = false;
   bool started_ = false;
 #if defined(ES_PET_ULTIMATE_XIAO)
-  bool redraw_request_ = false;
+  Lsm6ds3Taps lsm_taps_;
   esp_err_t service_lsm_locked_(uint32_t &new_steps);
   esp_err_t read_lsm_counter_(uint16_t &raw);
   Lsm6ds3Steps lsm_steps_;

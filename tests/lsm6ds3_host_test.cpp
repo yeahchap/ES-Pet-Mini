@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdio>
 #include "lsm6ds3_steps.h"
+#include "lsm6ds3_taps.h"
 #include "lsm6ds3_support.h"
 
 struct Registers {
@@ -78,8 +79,57 @@ static void accounting_test() {
   assert(steps.observe(4, 64) == 4);          // continue from new raw baseline
   assert(steps.take_pending() == 4);
 }
+static void tap_cycle_test() {
+  Lsm6ds3Taps taps;
+  Lsm6ds3Steps steps;
+  steps.baseline(0);
+
+  // An event-type bit by itself is not a new latched interrupt.
+  assert(!taps.observe(false, true, 0));
+  assert(!taps.observe(true, false, 0));
+  assert(taps.observe(true, true, 0));
+  assert(taps.pending());
+
+  // The acknowledgement chirp must retain the original pending request,
+  // suppress its own vibration, and continue banking real steps.
+  taps.begin_feedback();
+  assert(!taps.observe(true, true, 100000));
+  assert(steps.observe(12) == 12);
+  taps.finish_feedback(100000);
+  assert(taps.pending());
+  assert(taps.take());
+  assert(!taps.take());
+
+  taps.begin_refresh();
+  for (int64_t t = 200000; t <= 20000000; t += 200000) {
+    assert(!taps.observe(true, true, t));
+  }
+  assert(steps.observe(32) == 20);
+  taps.finish_refresh(20000000);
+  assert(!taps.pending());
+  // Setting the case down just after completion must not redraw again.
+  assert(!taps.observe(true, true, 20100000));
+  assert(!taps.observe(true, true, 21499999));
+  assert(taps.observe(true, true, 21500000));
+  assert(taps.take());
+  taps.finish_refresh(42000000);
+  assert(steps.take_pending() == 32);
+  assert(steps.take_pending() == 0);
+
+  // An unrelated game chirp also cannot synthesize a display request.
+  taps.begin_feedback();
+  taps.begin_feedback();
+  assert(!taps.observe(true, true, 50000000));
+  taps.finish_feedback(50100000);
+  assert(!taps.observe(true, true, 52000000));
+  taps.finish_feedback(52000000);
+  assert(!taps.observe(true, true, 53499999));
+  assert(!taps.observe(false, true, 53500000));
+  assert(taps.observe(true, true, 53500000));
+}
 int main() {
   config_test();
   accounting_test();
-  std::puts("PASS: LSM6DS3 pedometer/tap register coexistence, IRQ routing, bank restore, I2C errors, step delivery and rollover");
+  tap_cycle_test();
+  std::puts("PASS: LSM6DS3 configuration, step delivery/rollover and single-refresh tap cycles");
 }

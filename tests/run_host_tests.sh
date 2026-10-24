@@ -28,4 +28,18 @@ g++ "${COMMON[@]}" \
   -o "$OUT/mission_rewards_test"
 "$OUT/mission_rewards_test"
 
-echo "RC7 host tests passed"
+g++ "${COMMON[@]}" \
+  "$ROOT/tests/clock_sync_host_test.cpp" \
+  -o "$OUT/clock_sync_test"
+"$OUT/clock_sync_test"
+
+for TARGET in classic ultimate; do
+  FLAGS=()
+  if [[ "$TARGET" == ultimate ]]; then FLAGS+=(-DES_PET_ULTIMATE_XIAO=1); fi
+  g++ "${COMMON[@]}" "${FLAGS[@]}" -I"$ROOT/tests/radio_stubs" \
+    "$ROOT/tests/xiao_radio_host_test.cpp" "$ROOT/src/xiao_radio.cpp" \
+    -o "$OUT/radio_$TARGET"
+  "$OUT/radio_$TARGET"
+done
+
+echo "RC7, clock and antenna host tests passed"

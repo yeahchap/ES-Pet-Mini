@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check LSM6DS3 configuration and step accounting
         run: python3 tests/run_lsm6ds3_host_tests.py
+      - name: Check clock recovery and existing game rules
+        run: bash tests/run_host_tests.sh
   build:
     runs-on: ubuntu-latest
     strategy:

@@ -1,6 +1,6 @@
 # 04 — Ultimate Personal ES-PET Mini (XIAO ESP32-C6)
 
-**Status: LSM6DS3 port compiled with ESP-IDF 6.0.1; physical bench validation pending.**
+**Status: v0.2 maintenance corrections prepared; bench validation pending.**
 The production/known-good RC7 remains on `main`. Do not replace the working
 personal pet until we have a verified backup and restoration procedure.
 
@@ -56,6 +56,10 @@ pio run -e trimagotchi-c6
 ```
 
 - Compile flag: `ES_PET_ULTIMATE_XIAO` is required on this target.
+- Configure the XIAO RF switch before Wi-Fi starts and again on radio wake:
+  internal GPIO3 LOW enables it; internal GPIO14 LOW selects the onboard
+  ceramic antenna. These are not external XIAO D3/D14 wiring instructions.
+  Seeed reference: https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#hardware-overview
 - Four-colour profile is fixed: **never use GPIO21 as profile selector**,
   because on XIAO it is the BUSY input.
 - LED handling is board specific (XIAO GPIO15, not SuperMini GPIO8).
@@ -66,9 +70,24 @@ pio run -e trimagotchi-c6
   and destructive factory-reset warnings can still refresh independently.
 - Background radio scans now target 15-minute intervals initially. This
   is a starting point for consumption tests, NOT a measured optimum.
+- Clock recovery also accepts the exact saved HOME SSID seen in a normal
+  passive scan; an incomplete ambient HOME fingerprint cannot block that
+  route. Connecting still uses the saved credentials. Only a temporary
+  visibility flag is retained, not SSID text in the discovery/history books.
+- Clock retries keep their 30-minute backoff and successful syncs their
+  six-hour interval. There are no added background scans or screen redraws.
+  A double tap starts the usual scan/update cycle; if a sync is due it is
+  attempted before drawing the requested status. `NO CLOCK` logs distinguish
+  missing setup, missing HOME visibility and later Wi-Fi/SNTP failures.
 - Full four-colour JD79660 refresh can take many seconds: a double tap
   does not make the physics of a full pigment refresh instantaneous.
 - A short piezo chirp replaces the classic motor gate.
+- One fresh TAP_IA + DOUBLE_TAP event requests one screen update. Events
+  during that cycle, chirps, and the 1.5-second post-refresh settling window
+  are acknowledged without queuing another update. Step counting continues.
+- The ADVENTURE step field now uses the same provisional undated counter as
+  the HOME/WALKIES fields while the clock is invalid. Pending steps are still
+  merged into a dated day exactly once after a successful time sync.
 
 ## Functional boundary (important)
 

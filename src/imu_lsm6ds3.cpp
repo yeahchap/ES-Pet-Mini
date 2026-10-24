@@ -227,8 +227,7 @@ esp_err_t ImuSense::service_lsm_locked_(uint32_t &new_steps) {
   auto ctx = context(dev_);
   lsm6ds3_tap_src_t tap{};
   const auto tap_error = lsm6ds3_tap_src_get(&ctx, &tap);
-  if (tap_error == 0 && tap.double_tap) {
-    redraw_request_ = true;
+  if (tap_error == 0 && lsm_taps_.observe(tap.tap_ia, tap.double_tap, now)) {
     ESP_LOGI(TAG, "LSM6DS3 double tap; display request latched");
   }
   return count_error != ESP_OK ? count_error : static_cast<esp_err_t>(tap_error);
@@ -318,7 +317,7 @@ ImuSnoozePoll ImuSense::poll_snooze() {
   if (!present_) return poll;
   xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
   poll.ok = service_lsm_locked_(poll.new_steps) == ESP_OK;
-  poll.wake_event = redraw_request_;
+  poll.wake_event = lsm_taps_.pending();
   poll.wake_source = poll.wake_event ? 0x10 : 0;
   poll.steps_since_boot = lsm_steps_.total();
   poll.hardware_step_counter = lsm_steps_.raw();
@@ -344,16 +343,51 @@ esp_err_t ImuSense::exit_snooze() {
 bool ImuSense::take_redraw_request() {
   if (!mutex_) return false;
   xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
-  const bool value = redraw_request_;
-  redraw_request_ = false;
+  const bool value = lsm_taps_.take();
   xSemaphoreGive(mutex(mutex_));
   return value;
 }
 bool ImuSense::redraw_pending() {
   if (!mutex_) return false;
   xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
-  const bool value = redraw_request_;
+  const bool value = lsm_taps_.pending();
   xSemaphoreGive(mutex(mutex_));
   return value;
+}
+void ImuSense::begin_display_refresh() {
+  if (!mutex_) return;
+  xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
+  lsm_taps_.begin_refresh();
+  xSemaphoreGive(mutex(mutex_));
+}
+void ImuSense::finish_display_refresh() {
+  if (!mutex_) return;
+  xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
+  // Acknowledge a tap/impact latched while the panel was busy. It must not
+  // become a second display request as soon as we re-enter light sleep.
+  auto ctx = context(dev_);
+  lsm6ds3_tap_src_t stale{};
+  const auto err = lsm6ds3_tap_src_get(&ctx, &stale);
+  if (err != 0) ESP_LOGW(TAG, "Post-refresh tap clear failed: %s",
+                         esp_err_to_name(static_cast<esp_err_t>(err)));
+  lsm_taps_.finish_refresh(esp_timer_get_time());
+  xSemaphoreGive(mutex(mutex_));
+}
+void ImuSense::begin_feedback() {
+  if (!mutex_) return;
+  xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
+  lsm_taps_.begin_feedback();
+  xSemaphoreGive(mutex(mutex_));
+}
+void ImuSense::finish_feedback() {
+  if (!mutex_) return;
+  xSemaphoreTake(mutex(mutex_), portMAX_DELAY);
+  auto ctx = context(dev_);
+  lsm6ds3_tap_src_t stale{};
+  (void)lsm6ds3_tap_src_get(&ctx, &stale);
+  // Retain an already accepted user request; only feedback-generated taps
+  // are suppressed. Step-counter observations are never reset or drained.
+  lsm_taps_.finish_feedback(esp_timer_get_time());
+  xSemaphoreGive(mutex(mutex_));
 }
 #endif

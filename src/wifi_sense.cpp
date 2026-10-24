@@ -1,5 +1,8 @@
 #include "wifi_sense.h"
 
+#include "clock_sync_policy.h"
+#include "xiao_radio.h"
+
 #include <algorithm>
 #include <cstring>
 #include <vector>
@@ -23,7 +26,6 @@ void WifiSense::event_handler_(void *arg,
                                esp_event_base_t event_base,
                                int32_t event_id,
                                void *event_data) {
-  (void)event_data;
   auto *self = static_cast<WifiSense *>(arg);
   if (!self || !self->event_group_) return;
 
@@ -39,6 +41,12 @@ void WifiSense::event_handler_(void *arg,
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     self->internet_connected_ = false;
     if (self->connecting_) {
+      if (event_data) {
+        const auto *event =
+            static_cast<const wifi_event_sta_disconnected_t *>(event_data);
+        ESP_LOGW(TAG, "HOME Wi-Fi disconnected during clock connection: reason=%u",
+                 static_cast<unsigned>(event->reason));
+      }
       xEventGroupSetBits(group, CONNECT_FAIL_BIT);
     }
   }
@@ -47,7 +55,9 @@ void WifiSense::event_handler_(void *arg,
 esp_err_t WifiSense::begin() {
   ESP_LOGI(TAG, "Initialising passive Wi-Fi sense");
 
-  esp_err_t err = esp_netif_init();
+  esp_err_t err = xiao_radio_begin();
+  if (err != ESP_OK) return err;
+  err = esp_netif_init();
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
 
   err = esp_event_loop_create_default();
@@ -99,13 +109,16 @@ esp_err_t WifiSense::sleep() {
 esp_err_t WifiSense::wake() {
   if (started_) return ESP_OK;
 
+  esp_err_t err = xiao_radio_begin();
+  if (err != ESP_OK) return err;
+
   if (setup_ap_active_) {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
   } else {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   }
 
-  esp_err_t err = esp_wifi_start();
+  err = esp_wifi_start();
   if (err == ESP_OK) {
     started_ = true;
     ESP_LOGI(TAG, "Wi-Fi radio awake");
@@ -245,7 +258,8 @@ uint64_t WifiSense::anonymise_bssid_(const uint8_t bssid[6]) const {
   return h == 0 ? 1 : h;
 }
 
-esp_err_t WifiSense::passive_scan(WifiScanResult &result) {
+esp_err_t WifiSense::passive_scan(WifiScanResult &result,
+                                 const char *saved_home_ssid) {
   result = WifiScanResult{};
 
   if (!started_ || setup_ap_active_ || internet_connected_ || connecting_) {
@@ -290,6 +304,10 @@ esp_err_t WifiSense::passive_scan(WifiScanResult &result) {
 
   for (uint16_t i = 0; i < returned; ++i) {
     const auto &ap = records[i];
+    if (clock_sync::matches_saved_ssid(ap.ssid, sizeof(ap.ssid),
+                                       saved_home_ssid)) {
+      result.saved_home_visible = true;
+    }
     WifiObservation obs;
     obs.anonymous_id = anonymise_bssid_(ap.bssid);
     obs.rssi = ap.rssi;

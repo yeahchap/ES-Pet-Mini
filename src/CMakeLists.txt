@@ -10,6 +10,7 @@ idf_component_register(
     "ui_icons.cpp"
     "memory.cpp"
     "wifi_sense.cpp"
+    "xiao_radio.cpp"
     "reward.cpp"
     "economy.cpp"
     "explorer.cpp"

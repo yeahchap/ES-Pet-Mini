@@ -46,6 +46,17 @@
 static const char *TAG = "trimagotchi";
 #if defined(ES_PET_ULTIMATE_XIAO)
 static bool g_ultimate_tap_chirped = false;
+static ImuSense *g_ultimate_imu = nullptr;
+
+class TapFeedbackGuard {
+ public:
+  TapFeedbackGuard() : imu_(g_ultimate_imu) {
+    if (imu_) imu_->begin_feedback();
+  }
+  ~TapFeedbackGuard() { if (imu_) imu_->finish_feedback(); }
+ private:
+  ImuSense *imu_;
+};
 #endif
 
 #if defined(ES_PET_ULTIMATE_XIAO)
@@ -74,6 +85,7 @@ static esp_err_t haptic_init() {
 }
 static void haptic_tap(const char *reason) {
   if (!haptic_ready) return;
+  TapFeedbackGuard feedback_guard;
   ESP_LOGI(TAG, "PIEZO chirp: %s", reason ? reason : "event");
   if (ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 512) != ESP_OK)
     return;
@@ -122,7 +134,13 @@ static void haptic_tap(const char *reason) {
 #endif
 
 static bool refresh_epaper_nonfatal(Epaper29Tri &epd, const char *reason) {
+#if defined(ES_PET_ULTIMATE_XIAO)
+  if (g_ultimate_imu) g_ultimate_imu->begin_display_refresh();
+#endif
   const esp_err_t err = epd.refresh();
+#if defined(ES_PET_ULTIMATE_XIAO)
+  if (g_ultimate_imu) g_ultimate_imu->finish_display_refresh();
+#endif
   if (err == ESP_OK) return true;
 
   ESP_LOGE(TAG,
@@ -411,11 +429,13 @@ static void draw_walkies_state(TinyGfx &g,
 }
 
 static void draw_adventure_state(TinyGfx &g, const LifeState &life,
-                                 const DailyStats &day) {
+                                 const DailyStats &day,
+                                 const TimeKeeper &clock) {
   draw_state_frame(g, "ADVENTURE");
   draw_metric_row(g, UiIcon::Xp, "TRIP XP", life.journey_xp, 46);
   draw_metric_row(g, UiIcon::Wifi, "NEW WIFI", life.journey_new_wifi, 67);
-  draw_metric_row(g, UiIcon::Steps, "STEPS", day.steps, 88);
+  draw_metric_row(g, UiIcon::Steps, "STEPS",
+                  displayed_today_steps(life, day, clock), 88);
 }
 
 static void draw_social_state(TinyGfx &g, const char *title,
@@ -795,7 +815,7 @@ static void draw_status(Epaper29Tri &epd,
                       peer_bonus_xp,
                       UiIcon::Friends, "FRIENDS", peer_book.count);
   } else if (life.journey_active || ex.journey_started) {
-    draw_adventure_state(g, life, day);
+    draw_adventure_state(g, life, day, clock);
   } else if (walkies) {
     draw_walkies_state(g, life, day, clock);
   } else {
@@ -1128,6 +1148,10 @@ extern "C" void app_main(void) {
   esp_err_t imu_err = imu.begin();
   if (imu_err == ESP_OK) {
     ESP_ERROR_CHECK(imu.start());
+#if defined(ES_PET_ULTIMATE_XIAO)
+    g_ultimate_imu = &imu;
+    ESP_LOGI(TAG, "Ultimate maintenance v0.2: RF antenna, clock recovery, live steps, single-refresh taps");
+#endif
   } else {
     ESP_LOGW(TAG, "IMU unavailable this boot: %s", esp_err_to_name(imu_err));
   }
@@ -1218,7 +1242,11 @@ extern "C" void app_main(void) {
     const int64_t epoch_started_us = esp_timer_get_time();
 
     WifiScanResult scan;
+#if defined(ES_PET_ULTIMATE_XIAO)
+    esp_err_t scan_err = wifi.passive_scan(scan, clock.home_ssid());
+#else
     esp_err_t scan_err = wifi.passive_scan(scan);
+#endif
 
     if (scan_err != ESP_OK) {
       ESP_LOGE(TAG, "Scan error: %s", esp_err_to_name(scan_err));
@@ -1420,7 +1448,16 @@ extern "C" void app_main(void) {
     // HOME is the only place Trimagotchi ever joins a Wi-Fi network. BLE is
     // briefly torn down for the infrequent SNTP transaction, then restored.
     bool clock_just_synced = false;
-    if (clock.should_sync(ex.home_confident)) {
+    if (!clock.valid()) {
+      ESP_LOGI(TAG, "NO CLOCK: setup=%s HOME-fingerprint=%s saved-home-visible=%s",
+               clock.configured() ? "YES" : "NO",
+               ex.home_confident ? "YES" : "NO",
+               scan.saved_home_visible ? "YES" : "NO");
+    }
+    if (clock.should_sync(ex.home_confident, scan.saved_home_visible)) {
+      if (!ex.home_confident && scan.saved_home_visible) {
+        ESP_LOGI(TAG, "Clock recovery: saved HOME Wi-Fi visible; fingerprint not required");
+      }
       esp_err_t bs = ble.sleep();
       if (bs == ESP_OK) {
         esp_err_t ts = clock.sync_at_home(wifi);
